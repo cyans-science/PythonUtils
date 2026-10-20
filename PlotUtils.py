@@ -1,7 +1,11 @@
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+
 import numpy as np
 
-COLOUR = ['#1E90FF', # 0 # Dodgerblue
+# 🎨 Predefined colour palette for plots
+COLOUR = [#'#1E90FF', # 0 # Dodgerblue
+          '#51ADDA', # 0 # Vivid Sky Blue(LXB)
         # '#FFBF00', # 1 # Amber
         '#E6A817', # 1 # Harvest Gold
         '#FF6347', # 2 # Tomato
@@ -14,11 +18,44 @@ COLOUR = ['#1E90FF', # 0 # Dodgerblue
         '#FF004F', # 8 # Folly
         '#0063A6', # 9 # Lapis Lazuli
         ]
-
+# Function to get colour by index
 def getColour(i):
     return COLOUR[i]
 
+
+HATCH = [
+    "..",
+    "//",
+    "",
+    "",
+    "",
+    "\\\\",
+    "",
+    # "oo",
+    "",
+    "",
+    "**",
+    # "..",
+    # "++",
+    # "--",
+    # "||",
+]
+
+def getHatch(i):
+    return HATCH[i % len(HATCH)]
+
 def setMplParam(classNum=10, isVaryLineStyle=True):
+    """
+    Configure global Matplotlib parameters for consistent and visually clear plots.
+
+    Parameters:
+    - classNum (int): Number of classes (colours, markers, styles) to use.
+    - isVaryLineStyle (bool): If True, vary line styles across classes; otherwise, use solid lines.
+
+    Effects:
+    - Updates Matplotlib's rcParams globally, setting default colours, line styles,
+      marker shapes, font sizes, grid settings, and tick formatting.
+    """
     # Define effective colors, line styles, and markers based on the class number
     LINE = ['-', '-.', '--', '-.', ':','--','-.','-', ':', '--']
     MARKER = ['.','*', '^', 's', '.', 'p', 'o', 's', '.', 'd']
@@ -90,6 +127,11 @@ def getHistoParam(data, Nbins=None, binwidth=None, isDensity=False, isLog=False)
     - bins: array, bin edges
     - counts: array, histogram counts
     - bin_centers: array, centers of the bins
+    
+    Notes:
+    - Filters out NaN values automatically.
+    - Raises ValueError for empty data or invalid log binning.
+    
     """
     # Ensure `data` is a NumPy array and filter out NaNs and None values
     data = np.array(data, dtype=float)
@@ -132,3 +174,114 @@ def getHistoParam(data, Nbins=None, binwidth=None, isDensity=False, isLog=False)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2  # Linear binning
 
     return Nbins, binwidth, bins, counts, bin_centers
+
+def enable_histogram_counts(
+    fontsize: int = 12,
+    rotation: int = 0,
+    min_count: float = 1,
+    every: int = 1,
+    y_offset_frac: float = 0.015,
+):
+    """
+    Enable automatic annotation of histogram counts in Matplotlib.
+
+    Works for both bar-style and step-style histograms by using the
+    returned histogram counts and bin edges, rather than relying on
+    rectangle patches.
+
+    Parameters
+    ----------
+    fontsize:
+        Annotation font size.
+    rotation:
+        Text rotation angle.
+    min_count:
+        Only annotate bins with count >= min_count.
+    every:
+        Annotate every Nth non-empty bin, useful to reduce clutter.
+    y_offset_frac:
+        Vertical offset as a fraction of current y-axis maximum.
+    """
+    if getattr(Axes, "_hist_counts_annotated", False):
+        return
+
+    _orig_hist = Axes.hist
+
+    def _hist_with_counts(self, *args, **kwargs):
+        # Optional per-call controls
+        annotate = kwargs.pop("annotate_counts", True)
+        local_fontsize = kwargs.pop("count_fontsize", fontsize)
+        local_rotation = kwargs.pop("count_rotation", rotation)
+        local_min_count = kwargs.pop("count_min", min_count)
+        local_every = kwargs.pop("count_every", every)
+        local_y_offset_frac = kwargs.pop("count_y_offset_frac", y_offset_frac)
+
+        out = _orig_hist(self, *args, **kwargs)
+
+        if not annotate:
+            return out
+
+        try:
+            n, bins, patches = out
+        except Exception:
+            return out
+
+        bin_centers = 0.5 * (bins[:-1] + bins[1:])
+
+        # n can be:
+        # - shape (Nbins,) for one dataset
+        # - shape (Ndatasets, Nbins) for multiple datasets
+        n_arr = np.asarray(n, dtype=float)
+
+        if n_arr.ndim == 1:
+            count_groups = [n_arr]
+        else:
+            count_groups = list(n_arr)
+
+        ymax = self.get_ylim()[1]
+        y_offset = ymax * local_y_offset_frac
+
+        for group_idx, counts in enumerate(count_groups):
+            nonzero_counter = 0
+
+            for x, count in zip(bin_centers, counts):
+                if count < local_min_count or not np.isfinite(count):
+                    continue
+
+                if nonzero_counter % local_every != 0:
+                    nonzero_counter += 1
+                    continue
+
+                if np.isclose(count, round(count)):
+                    label = f"{int(round(count))}"
+                else:
+                    label = f"{count:.1f}"
+
+                self.text(
+                    x,
+                    count + y_offset,
+                    label,
+                    ha="center",
+                    va="bottom",
+                    fontsize=local_fontsize,
+                    rotation=local_rotation,
+                    clip_on=True,
+                )
+
+                nonzero_counter += 1
+
+        return out
+
+    Axes.hist = _hist_with_counts
+    Axes._hist_counts_annotated = True
+    
+def annotate_histogram(ax, fontsize=12):
+    """Manually annotate bars of the most recent histogram on a given Axes."""
+    for container in ax.containers:
+        if hasattr(container, "patches"):  # typical for hist containers
+            for patch in container.patches:
+                h = patch.get_height()
+                if h <= 0 or not np.isfinite(h):
+                    continue
+                x = patch.get_x() + patch.get_width() / 2
+                ax.text(x, h, f"{int(h)}", ha="center", va="bottom", fontsize=fontsize)
