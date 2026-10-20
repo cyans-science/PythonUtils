@@ -5,6 +5,6 @@
 * ![alt text](image.png)
 * `getHistoParam` returns histogram parameters for a given array. The binwith, or the number of bins can be set by giving either as an argument of the function
 
-# 2. ExternalFunctions.py
+# 2. ExternalFunctions.py from Applied Statistics @ NBI – Author: Christian Michelsen (NBI, 2018), Troels Petersen (NBI, 2018-)
 * contains add-ons for statistical fitting and plotting
 * `add_text_to_ax(x_coord, y_coord, string, ax, fontsize=12, color='k')`: very useful for adding text to a plot
